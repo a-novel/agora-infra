@@ -10,3 +10,10 @@ resource "aws_subnet" "alb" {
     SubnetName = local.alb_subnet_name
   }
 }
+
+resource "aws_route_table_association" "alb_internet" {
+  count = length(local.alb_subnet_cidr_blocks)
+
+  subnet_id      = aws_subnet.alb[count.index].id
+  route_table_id = aws_route_table.public.id
+}
