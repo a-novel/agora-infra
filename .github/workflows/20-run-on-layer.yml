@@ -1,0 +1,123 @@
+name: 20-run-on-layer
+run-name: 🧩 [${{ inputs.ENVIRONMENT }}] Run ${{ inputs.COMMAND }} command on layer ${{ inputs.LAYER }} from branch ${{ github.ref_name }}
+
+on:
+  workflow_dispatch:
+    inputs:
+      COMMAND:
+        description: Command to run on target layer
+        required: true
+        type: choice
+        options:
+          - plan
+          - apply
+          - destroy
+      LAYER:
+        description: The directory name of the target layer
+        required: true
+        type: string
+      ENVIRONMENT:
+        description: Target environment
+        required: true
+        type: choice
+        options:
+          - prod
+  workflow_call:
+    inputs:
+      COMMAND:
+        description: Command to run on target layer
+        required: true
+        type: string
+      LAYER:
+        description: The directory name of the target layer
+        required: true
+        type: string
+      ENVIRONMENT:
+        description: Target environment
+        required: true
+        type: string
+
+permissions:
+  id-token: write
+  contents: read
+  pull-requests: write
+  pages: write
+  security-events: write
+  actions: read
+
+env:
+  LAYERS_DIRECTORY: infrastructure/layers
+
+concurrency:
+  group: lock-layer-${{ inputs.ENVIRONMENT }}-${{ inputs.LAYER }}
+
+jobs:
+  run-command:
+    name: "🧩 [${{ inputs.ENVIRONMENT }}] ${{ inputs.COMMAND }} ${{ inputs.LAYER }}"
+    runs-on: ubuntu-24.04
+    environment: ${{ inputs.ENVIRONMENT }}
+    defaults:
+      run:
+        shell: bash
+        working-directory: "${{ env.LAYERS_DIRECTORY }}/${{ inputs.LAYER }}"
+    env:
+      AWS_REGION: ${{ vars.AWS_REGION }}
+      AWS_ROLE: ${{ vars.AWS_ROLE }}
+      GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      ENVIRONMENT: ${{ inputs.ENVIRONMENT }}
+      LAYER: ${{ inputs.LAYER }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup opentofu
+        uses: ./.github/actions/tofu-setup
+
+      - name: Assume role ${{ vars.AWS_ROLE }}
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ env.AWS_ROLE }}
+          aws-region: ${{ env.AWS_REGION }}
+          role-duration-seconds: 3600
+          role-skip-session-tagging: true
+          role-session-name: ${{ github.repository_id }}
+
+      - name: Init backend
+        run: |
+          tofu init \
+            -backend-config="../../variables/${ENVIRONMENT}/backend.tfvars" \
+            -backend-config="key=${LAYER}.tfstate"
+
+      - name: 🔍 Plan
+        if: inputs.COMMAND == 'plan'
+        run: |
+          export exitcode=0
+          tofu plan \
+            -out=.tfplan \
+            -detailed-exitcode \
+            -compact-warnings \
+            -var-file=../../variables/${ENVIRONMENT}/main.tfvars \
+            -var-file=../../variables/shared.tfvars || export exitcode=$?
+          if [ $exitcode -eq 1 ]; then
+            echo "Plan failed"
+            exit 1
+          else
+            exit 0
+          fi
+
+      - name: 🚀 Apply
+        if: inputs.COMMAND == 'apply'
+        run: |
+          tofu apply \
+            -auto-approve \
+            -compact-warnings \
+            -var-file=../../variables/${ENVIRONMENT}/main.tfvars \
+            -var-file=../../variables/shared.tfvars
+
+      - name: 💣 Destroy
+        if: inputs.COMMAND == 'destroy'
+        run: |
+          tofu destroy \
+            -auto-approve \
+            -compact-warnings \
+            -var-file=../../variables/${ENVIRONMENT}/main.tfvars \
+            -var-file=../../variables/shared.tfvars

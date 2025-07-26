@@ -1,0 +1,17 @@
+.idea
+
+# Local .terraform directories
+**/.terraform
+
+# Variables files
+*.auto.tfvars
+
+# Override files
+*.tfoverride
+
+# Environment-specific files
+.envrc
+
+# CLI configuration files
+.terraformrc
+terraform.rc

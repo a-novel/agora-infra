@@ -1,0 +1,37 @@
+name: 00-bootstrap
+run-name: Bootstrap the project from branch ${{ github.ref_name }}
+permissions: write-all
+concurrency: create-backend
+
+on:
+  workflow_dispatch:
+
+env:
+  BACKEND_CREATION_SCRIPT_PATH: scripts/init_backend.sh
+  PROJECT_CODE: agorasv
+
+jobs:
+  create-backend:
+    name: Create backend for ${{ matrix.environment.name }}
+    runs-on: ubuntu-latest
+    environment: ${{ matrix.environment.name }}
+    strategy:
+      matrix:
+        environment: [{ name: "prod" }]
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Assume role ${{ vars.AWS_ROLE }}
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ vars.AWS_ROLE }}
+          aws-region: ${{ vars.AWS_REGION }}
+
+      - name: Run backend creation script
+        run: |
+          chmod 755 ${{ env.BACKEND_CREATION_SCRIPT_PATH }}
+          ./${{ env.BACKEND_CREATION_SCRIPT_PATH }} \
+            -r ${{ vars.AWS_REGION }} \
+            -e ${{ matrix.environment.name }} \
+            -p ${{ env.PROJECT_CODE }}

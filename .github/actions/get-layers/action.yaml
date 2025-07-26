@@ -1,0 +1,24 @@
+name: get-layers
+description: "Create a matrix containing all infrastructure layers"
+
+inputs:
+  directory:
+    required: true
+    type: string
+outputs:
+  layers:
+    description: "The matrix of layers"
+    value: ${{ steps.get-layers.outputs.layers }}
+
+runs:
+  using: "composite"
+  steps:
+    - name: Get layers
+      shell: bash
+      id: get-layers
+      env:
+        TARGET_DIRECTORY: ${{ inputs.directory }}
+      run: |
+        directories=$(ls -d "${TARGET_DIRECTORY}"/*/ | xargs -I{} basename {})
+        layers_json=$(jq -rcn --arg layer "${directories}" '{ include: ($layer | split("\n") | map({layer: .})) }')
+        echo "layers=$layers_json" >> "$GITHUB_OUTPUT"

@@ -1,0 +1,23 @@
+name: run renovate
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "0 * * * *"
+
+jobs:
+  renovate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: latest
+      - name: Self-hosted Renovate
+        uses: renovatebot/github-action@v43.0.4
+        with:
+          token: ${{ secrets.ACTION_PAT }}
+        env:
+          RENOVATE_ALLOWED_COMMANDS: '["^npx -y prettier . --write$"]'
+          RENOVATE_REPOSITORIES: "['a-novel/agora-infra']"
+          RENOVATE_PR_HOURLY_LIMIT: 0
+          LOG_LEVEL: debug

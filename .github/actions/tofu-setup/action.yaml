@@ -1,0 +1,23 @@
+name: tofu-setup
+description: "Install opentofu using version from config file"
+
+runs:
+  using: composite
+  steps:
+    - name: Retrieve version
+      shell: bash
+      id: get-version
+      run: |
+        echo "Retrieving opentofu version from .opentofu-version file..."
+        version=$(head -n 1 .opentofu-version)
+        echo "Found version ${version}"
+        if [[ "$version" == "" ]]; then
+          echo "[ERROR] No version found..."
+          exit 1
+        fi
+        echo "version=$version" >> "$GITHUB_OUTPUT"
+
+    - uses: opentofu/setup-opentofu@v1
+      with:
+        tofu_wrapper: false
+        tofu_version: ${{ steps.get-version.outputs.version }}
