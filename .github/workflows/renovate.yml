@@ -17,7 +17,6 @@ jobs:
         with:
           token: ${{ secrets.ACTION_PAT }}
         env:
-          RENOVATE_ALLOWED_COMMANDS: '["^npx -y prettier . --write$"]'
           RENOVATE_REPOSITORIES: "['a-novel/agora-infra']"
           RENOVATE_PR_HOURLY_LIMIT: 0
           LOG_LEVEL: debug
