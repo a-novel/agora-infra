@@ -2,6 +2,9 @@
 
 # Local .terraform directories
 **/.terraform
+**/.terraform.lock.hcl
+**/*.tfstate
+**/*.tfplan
 
 # Variables files
 *.auto.tfvars

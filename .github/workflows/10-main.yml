@@ -1,0 +1,169 @@
+name: 10-main
+run-name: 🚔 Perform checks for branch ${{ github.ref_name }}
+
+on:
+  workflow_dispatch:
+  push:
+
+env:
+  LAYERS_DIRECTORY: infrastructure/layers
+  INFRASTRUCTURE_DIRECTORY: infrastructure
+
+jobs:
+  list-layers:
+    name: 🥞 Get list of layers
+    runs-on: ubuntu-24.04
+    outputs:
+      layers: ${{ steps.get-layers.outputs.layers }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build matrix
+        id: get-layers
+        uses: ./.github/actions/get-layers
+        with:
+          directory: ${{ env.LAYERS_DIRECTORY }}
+
+  validate-infra-code:
+    name: ✅ Validate layer ${{ matrix.layer }}
+    needs: list-layers
+    runs-on: ubuntu-24.04
+    strategy:
+      matrix: ${{ fromJSON(needs.list-layers.outputs.layers) }}
+      fail-fast: false
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup opentofu
+        uses: ./.github/actions/tofu-setup
+
+      - name: Init backend
+        working-directory: ${{ env.LAYERS_DIRECTORY }}/${{ matrix.layer }}
+        run: tofu init -backend=false
+
+      - name: ✅ Validate
+        working-directory: ${{ env.LAYERS_DIRECTORY }}/${{ matrix.layer }}
+        run: tofu validate
+
+  lint:
+    name: 🚔 Check code format
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup opentofu
+        uses: ./.github/actions/tofu-setup
+
+      - name: 🚔 Check code format
+        env:
+          OUTPUT_FILE: output.txt
+        run: |
+          export exitcode=0
+          tofu fmt \
+            -recursive \
+            -check \
+            "$INFRASTRUCTURE_DIRECTORY" > "$OUTPUT_FILE" || export exitcode=$?
+
+          if [ $exitcode -eq 0 ]; then
+            echo "The code is formated properly"
+            {
+              echo "# Code format output"
+              echo ""
+              echo ":white_check_mark: The code is formated properly"
+              echo ""
+            } >> $GITHUB_STEP_SUMMARY
+          else
+            total_failing_files=$(cat "$OUTPUT_FILE" | wc -l)
+            echo "Total failing files: ${total_failing_files}"
+            echo "List of failing files:"
+            cat "$OUTPUT_FILE"
+
+            {
+              echo "# Code format output"
+              echo ""
+              echo "Total failing files: ${total_failing_files}"
+              echo ""
+              echo "<details><summary>Click to expand</summary>"
+              echo ""
+              cat "$OUTPUT_FILE"
+              echo ""
+              echo "</details>"
+            } >> $GITHUB_STEP_SUMMARY
+          fi
+          exit $exitcode
+
+  checkov:
+    name: 🔒 Checkov
+    runs-on: ubuntu-24.04
+    env:
+      OUTPUT_FILE: output.txt
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Checkov
+        run: python -m pip install checkov
+
+      - name: Run Checkov
+        run: |
+          checkov \
+            -d "$INFRASTRUCTURE_DIRECTORY" \
+            --soft-fail \
+            --output cli \
+            --output github_failed_only \
+            --output-file-path "console,${OUTPUT_FILE}"
+          if [[ $(cat "$OUTPUT_FILE" | wc -l) -eq 4 ]]; then
+            rm "$OUTPUT_FILE"
+          fi
+
+      - name: Publish report
+        if: always()
+        run: |
+          {
+            echo "# Checkov output"
+            echo "<details><summary>Click to expand</summary>"
+            echo ""
+            cat "$OUTPUT_FILE" || echo ":white_check_mark: No findings found"
+            echo ""
+            echo "</details>"
+          } >> $GITHUB_STEP_SUMMARY
+
+  trivy:
+    name: 🔒 Trivy
+    runs-on: ubuntu-24.04
+    env:
+      PROD_OUTPUT_FILE: prod_output.txt
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Trivy
+        uses: aquasecurity/setup-trivy@v0.2.3
+
+      - name: "[PROD] Trivy scan"
+        run: |
+          trivy fs \
+            --tf-vars infrastructure/variables/shared.tfvars,infrastructure/variables/prod/main.tfvars \
+            --scanners secret,vuln,misconfig \
+            --config trivy.yml \
+            --ignorefile .trivyignore.yml \
+            --format table \
+            --exit-code 0 \
+            --severity HIGH,CRITICAL \
+            --output "$PROD_OUTPUT_FILE" \
+            "$INFRASTRUCTURE_DIRECTORY"
+          if [[ $(cat "$OUTPUT_FILE" | wc -l) -eq 0 ]]; then
+            rm "$PROD_OUTPUT_FILE"
+          fi
+
+      - name: Publish report
+        if: always()
+        run: |
+          {
+            echo "# Trivy output"
+            echo ""
+            echo "## PROD - Trivy scan result"
+            echo "<details><summary>Click to expand</summary>"
+            echo ""
+            cat "$PROD_OUTPUT_FILE" || echo ":white_check_mark: No findings found"
+            echo ""
+            echo "</details>"
+          } >> $GITHUB_STEP_SUMMARY

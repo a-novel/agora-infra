@@ -1,0 +1,3 @@
+skip-check:
+  - CKV_AWS_144 # Ensure that S3 bucket has cross-region replication enabled // Not needed
+  - CKV_AWS_145 # Ensure that S3 buckets are encrypted with KMS by default // No sensitive data in the project

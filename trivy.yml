@@ -1,0 +1,16 @@
+---
+quiet: false
+debug: false
+insecure: false
+timeout: 5m
+format: table
+offline-scan: true
+ignorefile: .trivyignore.yml
+security-checks:
+  - vuln
+  - config
+  - secret
+
+db:
+  skip-update: false
+  no-progress: false
